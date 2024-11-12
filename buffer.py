@@ -92,7 +92,7 @@ def add_transition(buffer: ReplayBufferStorage, transition: Transition) -> Repla
   new_full = jnp.where(new_cursor == 0, True, buffer.full)
 
   return ReplayBufferStorage( states=new_states, actions=new_actions, rewards=new_rewards, dones=new_dones,
-                               next_states=new_next_states, cursor=jnp.array(new_cursor), full=new_full)
+                               next_states=new_next_states, cursor=new_cursor, full=new_full)
 
   ################
 

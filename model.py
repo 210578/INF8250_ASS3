@@ -58,7 +58,7 @@ class DQN(nn.Module):
         x = nn.relu(x)
         x = nn.Dense(features=64)(x)
         x = nn.relu(x)
-        q_values = nn.Dense(features=self.n_actions)(x)
+        x = nn.Dense(features=self.n_actions)(x)
         ################
         
         return x
@@ -120,7 +120,7 @@ def select_action(dqn: DQN, rng: chex.PRNGKey, params: DQNParameters, state: che
     q_values = dqn.apply(params, state)
     key,subkey= jnp.split(rng,2)
     a = jax.random.randint(subkey, shape=(), minval=0, maxval=dqn.n_actions)
-    key,subkey= jnp.split(key,2)
+    key,subkey= jnp.split(subkey,2)
     action = jnp.where( jax.random.uniform(subkey) < epsilon, a, jnp.argmax(q_values))
     ################
 
@@ -147,7 +147,7 @@ def compute_loss(dqn: DQN, params: DQNParameters, target_params: DQNParameters, 
     ################
     ## YOUR CODE GOES HERE
     q_values = dqn.apply(params, state)
-    q_value = q_values[jnp.arange(q_values.shape[0])] [action]
+    q_value = q_values [action]
 
     next_q_values = dqn.apply(target_params, next_state)
     target= reward + gamma * (1.0 - done) * jnp.max(next_q_values, axis=-1)
@@ -193,15 +193,15 @@ def initialize_agent_state(dqn: DQN, rng: chex.PRNGKey, args: DQNTrainingArgs) -
     dummy_state = jnp.ones((args.train_batch_size, *dqn.state_shape))
     key, subkey = jax.random.split(rng, 2)
     p = dqn.init(subkey, dummy_state)
+    target_p = p
     tx = optax.sgd(learning_rate=args.learning_rate)
 
     train_state = DQNTrainState.create(
         apply_fn=dqn.apply,
         params=p,
-        target_params=p,
+        target_params=target_p,
         tx=tx,
     )
-
     return train_state
 
 # we are using cartpole dqn so we can fix the sizes
@@ -213,98 +213,6 @@ SimpleDQNAgent = DQNAgent(
     compute_loss=compute_loss,
     update_target=update_target,
 )
-
-
-def compute_loss(dqn: DQN, params: DQNParameters, target_params: DQNParameters, transition: Transition,
-                 gamma: float) -> chex.Array:
-    """ Computes the Deep Q-Network loss.
-
-    Args:
-        dqn (DQN): the Deep Q-Network model object
-        params: (DQNParameters): the parameters of DQN
-        target_params: (DQNParameters): the parameters of the target network of DQN
-        transition (Transition): a tuple of (state, action, reward, done, next_state).
-            shapes do not have batch dimension i.e. reward has shape (1,).
-            For details on shapes, see buffers.py
-            This is done for simplicity of implementation.
-        gamma (float): the discounting factor for our agent
-    Returns:
-        loss (chex.Array): a scalar loss value
-    """
-    state, action, reward, done, next_state = transition
-
-    ################
-    ## YOUR CODE GOES HERE
-    q_values = dqn.apply(params, state)
-    q_value = q_values[jnp.arange(q_values.shape[0])][action]
-
-    next_q_values = dqn.apply(target_params, next_state)
-    target_q_value = reward + gamma * (1.0 - done) * jnp.max(next_q_values, axis=-1)
-
-    # Loss as mean squared error
-    loss = jnp.sum((q_value - target_q_value) ** 2)
-
-    ################
-    return loss
-
-
-def update_target(state: DQNTrainState) -> DQNTrainState:
-    """ performs an update of the target network parameters
-
-    Args:
-        state (DQNTrainState): the current training state of DQN
-    Returns:
-        new_state (DQNTrainState): updated training state where target network parameters is a copy of
-        the current network parameters
-    """
-    ################
-    ## YOUR CODE GOES HERE
-    new_state = state
-    new_state = state.replace(target_params=state.params)
-
-    ################
-
-    return new_state
-
-
-def initialize_agent_state(dqn: DQN, rng: chex.PRNGKey, args: DQNTrainingArgs) -> DQNTrainState:
-    """ Creates the training state for the DQN agent
-
-    Args:
-        dqn (DQN): The Deep Q-Network object
-        rng (chex.PRNGKey):
-        args (DQNTrainingArgs): the arguments object that defines the optimization process of our agent
-    Returns:
-        train_state (DQNTrainState): the flax TrainingState object with an additional field
-        (target network parameters) that we defined above.
-    """
-    ################
-    ## YOUR CODE GOES HERE
-    key,subkey= jnp.split(rng,2)
-
-    p = dqn.init(subkey, jnp.zeros(dqn.state_shape))
-    tx = optax.adam(args.learning_rate)
-
-    train_state = DQNTrainState.create(
-        apply_fn=dqn.apply,
-        params=p,
-        target_params=p,
-        tx=tx,
-    )
-
-    return train_state
-
-
-# we are using cartpole dqn so we can fix the sizes
-dqn = DQN(n_actions=2, state_shape=(4,))
-SimpleDQNAgent = DQNAgent(
-    dqn=dqn,
-    initialize_agent_state=initialize_agent_state,
-    select_action=select_action,
-    compute_loss=compute_loss,
-    update_target=update_target,
-)
-
 
 def compute_loss_double_dqn(dqn: DQN, params: DQNParameters, target_params: DQNParameters, transition: Transition,
                             gamma: float) -> chex.Array:
