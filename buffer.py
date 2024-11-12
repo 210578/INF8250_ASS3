@@ -87,8 +87,8 @@ def add_transition(buffer: ReplayBufferStorage, transition: Transition) -> Repla
     new_reward = buffer.rewards.at[cursor].set(reward)
     new_done = buffer.dones.at[cursor].set(done)
     new_next_state = buffer.next_states.at[cursor].set(next_state)
-    next_cursor = (cursor + 1) % max_buffer_size
 
+    next_cursor = (cursor + 1) % max_buffer_size
     new_full = jnp.where(next_cursor == 0, True, buffer.full)
 
     new_buffer = ReplayBufferStorage(states=new_state, actions=new_action, rewards=new_reward, dones=new_done,
@@ -115,27 +115,30 @@ def sample_transition(rng: chex.PRNGKey, buffer: ReplayBufferStorage) -> Transit
     ################
     ## YOUR CODE GOES HERE
     # please define these variables yourself
-    max_buffer_size = buffer.rewards.shape[0]
-    max_buffer_size = jnp.where(buffer.full == True, max_buffer_size, buffer.cursor)
-    key, subkey = jax.random.split(rng, 2)
+    max_size = buffer.rewards.shape[0]
+    sample_size = jnp.where(buffer.full, max_size, buffer.cursor)
 
-    i = jax.random.randint(subkey, minval=0, maxval=max_buffer_size, shape=())
+    key,subkey=jnp.split(rng,2)
 
+    i = jax.random.randint(subkey, shape=(), minval=0, maxval=sample_size)
+
+    # Retrieve sampled transition at the random index
     sampled_states = buffer.states[i]
     sampled_actions = buffer.actions[i]
     sampled_rewards = buffer.rewards[i]
     sampled_dones = buffer.dones[i]
-    samped_next_states = buffer.next_states[i]
-    ################
+    sampled_next_states = buffer.next_states[i]
 
     transition = (
         sampled_states,
         sampled_actions,
         sampled_rewards,
         sampled_dones,
-        samped_next_states,
+        sampled_next_states,
     )
     return transition
+    ################
+
 
 
 FIFOBuffer = ReplayBuffer(

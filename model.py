@@ -54,11 +54,9 @@ class DQN(nn.Module):
         """
         batch = state.shape[0]
         ################
-        new_dim = int(state.shape[1] ** 0.5)  # Try to reshape into a square-like shape
-        x = jnp.reshape(state, (batch, new_dim, new_dim, 1))  # Reshape to (batch_size, new_dim, new_dim, 1)
         print(f"State shape: {state.shape}, state shape is {self.state_shape} ")
         x = state
-        x = nn.Dense(64)(x)
+        x = nn.Dense(32)(x)
         x = nn.relu(x)
         x = nn.Dense(64)(x)
         x = nn.relu(x)
@@ -126,10 +124,12 @@ def select_action(dqn: DQN, rng: chex.PRNGKey, params: DQNParameters, state: che
     ################
     ## YOUR CODE GOES HERE
     q_values = dqn.apply(params, state)
+
     key, subkey = jax.random.split(rng, 2)
-    a = jax.random.choice(subkey, q_values.shape[-1])
-    condition = jax.random.uniform(rng) < epsilon
-    action = jnp.where(condition, a, jnp.argmax(q_values, axis=-1))
+    a = jax.random.randint(subkey, shape=(), minval=0, maxval=dqn.n_actions)
+
+    key, subkey = jax.random.split(key, 2)
+    action = jnp.where( jax.random.uniform(subkey) < epsilon, a, jnp.argmax(q_values, axis=-1))
 
     ################
 
@@ -157,10 +157,12 @@ def compute_loss(dqn: DQN, params: DQNParameters, target_params: DQNParameters, 
     ################
     ## YOUR CODE GOES HERE
     q_values = dqn.apply(params, state)
+    q_value = q_values[jnp.arange(q_values.shape[0])][action]
+
     next_q_values = dqn.apply(target_params, next_state)
-    max_next_q_values = jnp.max(next_q_values, axis=-1)
-    residual = q_values[jnp.arange(q_values.shape[0])][action] - (reward + gamma * (1 - done) * max_next_q_values)
-    loss = jnp.mean(residual ** 2)
+    target_q_value = reward + gamma * (1.0 - done) * jnp.max(next_q_values, axis=-1)
+
+    loss = jnp.mean((q_value - target_q_value) ** 2)
 
     ################
     return loss
@@ -198,7 +200,7 @@ def initialize_agent_state(dqn: DQN, rng: chex.PRNGKey, args: DQNTrainingArgs) -
     """
     ################
     ## YOUR CODE GOES HERE
-    dummy_state = jnp.ones((args.train_batch_size, *dqn.state_shape))
+    dummy_state = jnp.ones((args.train_batch_size,*dqn.state_shape))
     key, subkey = jax.random.split(rng, 2)
     p = dqn.init(subkey, dummy_state)
     target_p = p
@@ -246,14 +248,15 @@ def compute_loss_double_dqn(dqn: DQN, params: DQNParameters, target_params: DQNP
     ################
     ## YOUR CODE GOES HERE
     q_values = dqn.apply(params, state)
-    next_q_values = dqn.apply(params, next_state)
-    best_action = jnp.argmax(next_q_values, axis=-1)
-    target_next_q_values = dqn.apply(target_params, next_state)
-    target_q_value = target_next_q_values[jnp.arange(target_next_q_values.shape[0])][best_action]
-    target = reward + (1.0 - done) * gamma * target_q_value
-
     q_value = q_values[jnp.arange(q_values.shape[0])][action]
-    loss = jnp.mean((q_value - target) ** 2)
+
+    next_q_values = dqn.apply(params, next_state)
+    next_actions = jnp.argmax(next_q_values, axis=-1)
+
+    target_q_values = dqn.apply(target_params, next_state)
+    target_q_value = reward + gamma * (1.0 - done) * target_q_values[jnp.arange(target_q_values.shape[0])][next_actions]
+
+    loss = jnp.mean((q_value - target_q_value) ** 2)
 
     ################
 
