@@ -25,28 +25,28 @@ class ReplayBuffer:
     """init_buffer: initializes the replay buffer returning an empty one. It may accept any args"""
     add_transition: Callable[[ReplayBufferStorage, Transition], ReplayBufferStorage]
     """add_transition: 
-    adds one transition (state, action, reward, done, next_state) to the replay buffer.
-    Transition should be a tuple with arrays, each of the corresponding shape expected
-    by the storage without the buffer_size dimension. For example actions should be of shape
-    [*action_shape]
-  """
+      adds one transition (state, action, reward, done, next_state) to the replay buffer.
+      Transition should be a tuple with arrays, each of the corresponding shape expected
+      by the storage without the buffer_size dimension. For example actions should be of shape
+      [*action_shape]
+    """
     sample_transition: Callable[[chex.PRNGKey, ReplayBufferStorage], Transition]
     """sample_transition:
-    samples ONE transition from the replay buffer. the format of transition is:
-    a tuple of (state, action, reward, done, next_state).
-    This function accepts random key of jax to perform random sampling
-  """
+      samples ONE transition from the replay buffer. the format of transition is:
+      a tuple of (state, action, reward, done, next_state).
+      This function accepts random key of jax to perform random sampling
+    """
 
 
 def init_buffer(buffer_size: int, state_shape: Tuple[int]) -> ReplayBufferStorage:
     """ initializes an empty buffer.
 
-  Args:
-    buffer_size: int
-    state_shape: Tuple[int]
-  Returns:
-    ReplayBufferStorage
-  """
+    Args:
+      buffer_size: int
+      state_shape: Tuple[int]
+    Returns:
+      ReplayBufferStorage
+    """
     return ReplayBufferStorage(
         states=jnp.zeros((buffer_size, *state_shape), dtype=jnp.float32),
         actions=jnp.zeros((buffer_size, 1), dtype=jnp.int32),
@@ -61,84 +61,81 @@ def init_buffer(buffer_size: int, state_shape: Tuple[int]) -> ReplayBufferStorag
 def add_transition(buffer: ReplayBufferStorage, transition: Transition) -> ReplayBufferStorage:
     """ adds one transition to the replay buffer.
 
-  The implementation should follow the standard circular array pattern, i.e.,
-  each new transition should be written right after (wrt the 0-th dimension) 
-  the most recently added one (while the initial element should be added at index 0).
-  Once the maximal size is reached, the buffer should start overwriting its previous values
-  starting from the oldest one.
+    The implementation should follow the standard circular array pattern, i.e.,
+    each new transition should be written right after (wrt the 0-th dimension)
+    the most recently added one (while the initial element should be added at index 0).
+    Once the maximal size is reached, the buffer should start overwriting its previous values
+    starting from the oldest one.
 
-  Args:
-    buffer (ReplayBufferStorage): the buffer storage instance
-    transition (Transition): a tuple of (state, action, reward, done, next_state)
-      see the definition of ReplayBufferStorage and Transition for details on shapes.
-      (they don't have the leading ``batch'' dimension, e.g. reward has space (1,))
-  Returns: 
-    ReplayBufferStorage: an updated buffer storage instance 
-    (do not forget to update buffer.cursor and buffer.full !!!)
-  """
+    Args:
+      buffer (ReplayBufferStorage): the buffer storage instance
+      transition (Transition): a tuple of (state, action, reward, done, next_state)
+        see the definition of ReplayBufferStorage and Transition for details on shapes.
+        (they don't have the leading ``batch'' dimension, e.g. reward has space (1,))
+    Returns:
+      ReplayBufferStorage: an updated buffer storage instance
+      (do not forget to update buffer.cursor and buffer.full !!!)
+    """
     state, action, reward, done, next_state = transition
     cursor = buffer.cursor
     max_buffer_size = buffer.rewards.shape[0]
 
     ################
     ## YOUR CODE GOES HERE
-    new_state = buffer.states.at[cursor].set(state)
-    new_action = buffer.actions.at[cursor].set(action)
-    new_reward = buffer.rewards.at[cursor].set(reward)
-    new_done = buffer.dones.at[cursor].set(done)
-    new_next_state = buffer.next_states.at[cursor].set(next_state)
 
-    next_cursor = (cursor + 1) % max_buffer_size
-    new_full = jnp.where(next_cursor == 0, True, buffer.full)
+    new_states = buffer.states.at[cursor].set(state)
+    new_actions = buffer.actions.at[cursor].set(action)
+    new_rewards = buffer.rewards.at[cursor].set(reward)
+    new_dones = buffer.dones.at[cursor].set(done)
+    new_next_states = buffer.next_states.at[cursor].set(next_state)
 
-    new_buffer = ReplayBufferStorage(states=new_state, actions=new_action, rewards=new_reward, dones=new_done,
-                                     next_states=new_next_state, cursor=next_cursor, full=new_full)
+    new_cursor = (cursor + 1) % max_buffer_size
+    new_full = jnp.where(new_cursor == 0, True, buffer.full)
+
+    return ReplayBufferStorage(states=new_states, actions=new_actions, rewards=new_rewards, dones=new_dones,
+                               next_states=new_next_states, cursor=jnp.array(new_cursor), full=new_full)
 
     ################
-    return new_buffer
 
 
 def sample_transition(rng: chex.PRNGKey, buffer: ReplayBufferStorage) -> Transition:
     """ randomly (with uniform distribution) samples one transition to retrieve from the replay buffer.
 
-  Args:
-    rng (chex.PRNGKey): - random generation key for jax
-    buffer (ReplayBufferStorage):
-  Returns:
-    Transition: a tuple of (state, action, reward, done, next_state)
-    You should assume that rng is a "single" key, i.e. as if it was
-    returned by `jax.random.key(42)` and implement this function accordingly.
-    The shapes of each element of this objects should be the same as the ones
-    expected by `add_transition`.
-  """
+    Args:
+      rng (chex.PRNGKey): - random generation key for jax
+      buffer (ReplayBufferStorage):
+    Returns:
+      Transition: a tuple of (state, action, reward, done, next_state)
+      You should assume that rng is a "single" key, i.e. as if it was
+      returned by `jax.random.key(42)` and implement this function accordingly.
+      The shapes of each element of this objects should be the same as the ones
+      expected by `add_transition`.
+    """
 
     ################
     ## YOUR CODE GOES HERE
     # please define these variables yourself
-    max_size = buffer.rewards.shape[0]
-    sample_size = jnp.where(buffer.full, max_size, buffer.cursor)
+    max_buffer_size = buffer.rewards.shape[0]
+    max_buffer_size = jnp.where(buffer.full == True, max_buffer_size, buffer.cursor)
+    key, subkey = jax.random.split(rng, 2)
 
-    key,subkey=jnp.split(rng,2)
+    i = jax.random.randint(subkey, minval=0, maxval=max_buffer_size, shape=())
 
-    i = jax.random.randint(subkey, shape=(), minval=0, maxval=sample_size)
-
-    # Retrieve sampled transition at the random index
     sampled_states = buffer.states[i]
     sampled_actions = buffer.actions[i]
     sampled_rewards = buffer.rewards[i]
     sampled_dones = buffer.dones[i]
-    sampled_next_states = buffer.next_states[i]
+    samped_next_states = buffer.next_states[i]
+    ################
 
     transition = (
         sampled_states,
         sampled_actions,
         sampled_rewards,
         sampled_dones,
-        sampled_next_states,
+        samped_next_states,
     )
     return transition
-    ################
-
 
 
 FIFOBuffer = ReplayBuffer(

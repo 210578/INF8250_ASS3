@@ -25,7 +25,7 @@ class DQNTrainingArgs:
     sample_budget: int = 250_000  # the total number of environment transitions to train our agent over
     eval_env_steps: int = 5000  # total number of env steps to evaluate the agent over
     eval_environments: int = 10  # how many parallel environments to use in evaluation
-    # say we do 1 training step per N "environment steps" (i.e. per N sampled MDP transitions); 
+    # say we do 1 training step per N "environment steps" (i.e. per N sampled MDP transitions);
     # also, say train batch size in this step is M (in the number of MDP transitions).
     # train_intensity is the desired fraction M/N.
     # i.e. the ratio of "replayed" transitions to sampled transitions
@@ -54,16 +54,11 @@ class DQN(nn.Module):
         """
         batch = state.shape[0]
         ################
-        print(f"State shape: {state.shape}, state shape is {self.state_shape} ")
-        x = state
-        x = nn.Dense(32)(x)
+        x = nn.Dense(features=128)(state)
         x = nn.relu(x)
-        x = nn.Dense(64)(x)
+        x = nn.Dense(features=64)(x)
         x = nn.relu(x)
-        x = nn.Dense(64)(x)
-        x = nn.relu(x)
-        x = nn.Dense(self.n_actions)(x)
-
+        x = nn.Dense(features=self.n_actions)(x)
         ################
 
         return x
@@ -124,14 +119,15 @@ def select_action(dqn: DQN, rng: chex.PRNGKey, params: DQNParameters, state: che
     ################
     ## YOUR CODE GOES HERE
     q_values = dqn.apply(params, state)
+    max_action = jnp.argmax(q_values)
 
     key, subkey = jax.random.split(rng, 2)
-    a = jax.random.randint(subkey, shape=(), minval=0, maxval=dqn.n_actions)
+    random_action = jax.random.choice(subkey, a=q_values.shape[-1])
 
     key, subkey = jax.random.split(key, 2)
-    action = jnp.where( jax.random.uniform(subkey) < epsilon, a, jnp.argmax(q_values, axis=-1))
+    condition= jax.random.uniform(subkey) < epsilon
 
-    ################
+    action = jnp.where(condition, random_action, max_action)
 
     return action
 
@@ -157,12 +153,13 @@ def compute_loss(dqn: DQN, params: DQNParameters, target_params: DQNParameters, 
     ################
     ## YOUR CODE GOES HERE
     q_values = dqn.apply(params, state)
+
     q_value = q_values[jnp.arange(q_values.shape[0])][action]
 
     next_q_values = dqn.apply(target_params, next_state)
     target_q_value = reward + gamma * (1.0 - done) * jnp.max(next_q_values, axis=-1)
 
-    loss = jnp.mean((q_value - target_q_value) ** 2)
+    loss = jnp.sum((q_value - target_q_value) ** 2)
 
     ################
     return loss
@@ -200,16 +197,18 @@ def initialize_agent_state(dqn: DQN, rng: chex.PRNGKey, args: DQNTrainingArgs) -
     """
     ################
     ## YOUR CODE GOES HERE
-    dummy_state = jnp.ones((args.train_batch_size,*dqn.state_shape))
     key, subkey = jax.random.split(rng, 2)
-    p = dqn.init(subkey, dummy_state)
-    target_p = p
-    tx = optax.sgd(learning_rate=args.learning_rate)
+    p = dqn.init(subkey, jnp.ones((args.train_batch_size, *dqn.state_shape)))
+    tx = optax.adam(args.learning_rate)
+
+    key, subkey = jax.random.split(key, 2)
+    p2 = dqn.init(subkey, jnp.ones((args.train_batch_size, *dqn.state_shape)))
+
 
     train_state = DQNTrainState.create(
         apply_fn=dqn.apply,
         params=p,
-        target_params=target_p,
+        target_params=p2,
         tx=tx,
     )
 
@@ -256,7 +255,7 @@ def compute_loss_double_dqn(dqn: DQN, params: DQNParameters, target_params: DQNP
     target_q_values = dqn.apply(target_params, next_state)
     target_q_value = reward + gamma * (1.0 - done) * target_q_values[jnp.arange(target_q_values.shape[0])][next_actions]
 
-    loss = jnp.mean((q_value - target_q_value) ** 2)
+    loss = jnp.sum((q_value - target_q_value) ** 2)
 
     ################
 
